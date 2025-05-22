@@ -4,10 +4,14 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/resource.h>
+#include <sys/time.h>
+#include <sys/sysinfo.h>
 
 #define NUM_THREADS 8
 #define ARRAY_SIZE (1024 * 1024 * 16)  // Уменьшаем до 64MB для начала
 #define CACHE_LINE_SIZE 64
+#define MONITOR_INTERVAL 1  // Интервал мониторинга в секундах
 
 // Структура для передачи данных в поток
 typedef struct {
@@ -15,6 +19,13 @@ typedef struct {
     volatile int* array;
     size_t array_size;
 } ThreadData;
+
+// Структура для мониторинга
+typedef struct {
+    double cpu_usage;
+    long mem_usage;
+    int running;
+} MonitorData;
 
 // Функция для нагрузки процессора и кэша
 void* cpu_stress(void* arg) {
@@ -72,9 +83,37 @@ void* cpu_stress(void* arg) {
     return NULL;
 }
 
+// Функция мониторинга
+void* monitor_resources(void* arg) {
+    MonitorData* monitor = (MonitorData*)arg;
+    struct rusage usage;
+    struct sysinfo si;
+    
+    while(monitor->running) {
+        if (getrusage(RUSAGE_SELF, &usage) == 0) {
+            monitor->cpu_usage = (double)usage.ru_utime.tv_sec + 
+                                (double)usage.ru_utime.tv_usec / 1000000.0;
+        }
+        
+        if (sysinfo(&si) == 0) {
+            monitor->mem_usage = si.totalram - si.freeram;
+        }
+        
+        printf("\rCPU Usage: %.2f%% | Memory Usage: %.2f MB", 
+               monitor->cpu_usage * 100.0,
+               monitor->mem_usage / (1024.0 * 1024.0));
+        fflush(stdout);
+        
+        sleep(MONITOR_INTERVAL);
+    }
+    return NULL;
+}
+
 int main() {
     pthread_t threads[NUM_THREADS];
+    pthread_t monitor_thread;
     ThreadData thread_data[NUM_THREADS];
+    MonitorData monitor_data = {0};
     volatile int* shared_array;
     size_t total_size = ARRAY_SIZE * sizeof(int);
     
@@ -119,12 +158,22 @@ int main() {
         }
     }
     
+    // Запускаем мониторинг
+    monitor_data.running = 1;
+    if(pthread_create(&monitor_thread, NULL, monitor_resources, &monitor_data) != 0) {
+        printf("Failed to create monitor thread: %s\n", strerror(errno));
+    }
+    
     printf("All threads started. Press Ctrl+C to stop.\n");
     
     // Ждем завершения потоков
     for(int i = 0; i < NUM_THREADS; i++) {
         pthread_join(threads[i], NULL);
     }
+    
+    // Останавливаем мониторинг
+    monitor_data.running = 0;
+    pthread_join(monitor_thread, NULL);
     
     free((void*)shared_array);
     return 0;
