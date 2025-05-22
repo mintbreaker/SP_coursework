@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -O2
 LDFLAGS = -lm
 
-SRCS = cpu_info.c memory_info.c disk_info.c gpu_info.c network_info.c
+SRCS = main.c cpu_info.c memory_info.c disk_info.c gpu_info.c network_info.c
 OBJS = $(SRCS:.c=.o)
 
 all: system_monitor
