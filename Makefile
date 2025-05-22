@@ -1,24 +1,19 @@
 CC = gcc
-CFLAGS = -Wall -Wextra
-LDFLAGS = -lncurses -pthread
+CFLAGS = -Wall -Wextra -O2
+LDFLAGS = -lm
 
-SRCS = main.c system_info.c display.c
+SRCS = cpu_info.c memory_info.c disk_info.c gpu_info.c network_info.c
 OBJS = $(SRCS:.c=.o)
-TARGET = system_monitor
-STRESS_TARGET = stress_test
 
-all: $(TARGET) $(STRESS_TARGET)
+all: system_monitor
 
-$(TARGET): $(OBJS)
-	$(CC) $(OBJS) -o $(TARGET) $(LDFLAGS)
+system_monitor: $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-$(STRESS_TARGET): stress_test.c
-	$(CC) $(CFLAGS) -o $(STRESS_TARGET) stress_test.c -pthread
-
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+%.o: %.c system_info.h
+	$(CC) $(CFLAGS) -c $<
 
 clean:
-	rm -f $(OBJS) $(TARGET) $(STRESS_TARGET)
+	rm -f $(OBJS) system_monitor
 
 .PHONY: all clean 

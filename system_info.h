@@ -27,9 +27,35 @@
 
 // Структура для хранения данных о системе
 typedef struct {
+    // CPU информация
+    double cpu_usage;
+    double cpu_temp;
+    float load_1min;
+    float load_5min;
+    float load_15min;
+    
+    // Память
+    double memory_total;
+    double memory_used;
+    double memory_free;
+    double memory_cached;
+    
+    // Диск
+    double disk_total;
+    double disk_used;
+    double disk_free;
+    
+    // GPU информация
+    int gpu_usage;
+    double gpu_mem_used;
+    double gpu_mem_total;
+    double gpu_temp;
+    
+    // Сеть
+    unsigned long network_rx;
+    unsigned long network_tx;
+    
     // CPU Information
-    float cpu_usage;
-    float cpu_temp;
     int cpu_cores;
     float cpu_per_core[MAX_CPU_CORES];
     
@@ -38,7 +64,6 @@ typedef struct {
     float mem_used;
     float mem_total;
     float mem_buffers;
-    float mem_cached;
     float swap_usage;
     float swap_used;
     float swap_total;
@@ -55,12 +80,6 @@ typedef struct {
     // Battery Information
     int battery_capacity;
     char battery_status[32];
-    
-    // GPU Information
-    float gpu_usage;
-    float gpu_temp;
-    float gpu_mem_used;
-    float gpu_mem_total;
     
     // Network Information
     struct {
