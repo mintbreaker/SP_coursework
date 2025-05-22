@@ -7,11 +7,19 @@
 #include <sys/resource.h>
 #include <sys/time.h>
 #include <sys/sysinfo.h>
+#include <getopt.h>
 
-#define NUM_THREADS 8
-#define ARRAY_SIZE (1024 * 1024 * 16)  // Уменьшаем до 64MB для начала
+#define DEFAULT_NUM_THREADS 8
+#define DEFAULT_ARRAY_SIZE (1024 * 1024 * 16)
 #define CACHE_LINE_SIZE 64
-#define MONITOR_INTERVAL 1  // Интервал мониторинга в секундах
+#define MONITOR_INTERVAL 1
+
+// Глобальные настройки
+typedef struct {
+    int num_threads;
+    size_t array_size;
+    int monitor_interval;
+} Config;
 
 // Структура для передачи данных в поток
 typedef struct {
@@ -51,7 +59,7 @@ void* cpu_stress(void* arg) {
            thread_id, (array_size * sizeof(int)) / (1024 * 1024));
     
     // Определяем размер части массива для каждого потока
-    size_t chunk_size = array_size / NUM_THREADS;
+    size_t chunk_size = array_size / data->num_threads;
     size_t start_idx = thread_id * chunk_size;
     size_t end_idx = start_idx + chunk_size;
     
@@ -104,18 +112,74 @@ void* monitor_resources(void* arg) {
                monitor->mem_usage / (1024.0 * 1024.0));
         fflush(stdout);
         
-        sleep(MONITOR_INTERVAL);
+        sleep(monitor->monitor_interval);
     }
     return NULL;
 }
 
-int main() {
-    pthread_t threads[NUM_THREADS];
+void print_usage(const char* program_name) {
+    printf("Usage: %s [options]\n", program_name);
+    printf("Options:\n");
+    printf("  -t, --threads NUM    Number of threads (default: %d)\n", DEFAULT_NUM_THREADS);
+    printf("  -s, --size SIZE      Array size in MB (default: %zu)\n", DEFAULT_ARRAY_SIZE / (1024 * 1024));
+    printf("  -i, --interval SEC   Monitoring interval in seconds (default: %d)\n", MONITOR_INTERVAL);
+    printf("  -h, --help          Show this help message\n");
+}
+
+int parse_args(int argc, char* argv[], Config* config) {
+    static struct option long_options[] = {
+        {"threads", required_argument, 0, 't'},
+        {"size", required_argument, 0, 's'},
+        {"interval", required_argument, 0, 'i'},
+        {"help", no_argument, 0, 'h'},
+        {0, 0, 0, 0}
+    };
+
+    // Устанавливаем значения по умолчанию
+    config->num_threads = DEFAULT_NUM_THREADS;
+    config->array_size = DEFAULT_ARRAY_SIZE;
+    config->monitor_interval = MONITOR_INTERVAL;
+
+    int opt;
+    while ((opt = getopt_long(argc, argv, "t:s:i:h", long_options, NULL)) != -1) {
+        switch (opt) {
+            case 't':
+                config->num_threads = atoi(optarg);
+                break;
+            case 's':
+                config->array_size = atoi(optarg) * 1024 * 1024;
+                break;
+            case 'i':
+                config->monitor_interval = atoi(optarg);
+                break;
+            case 'h':
+                print_usage(argv[0]);
+                exit(0);
+            default:
+                print_usage(argv[0]);
+                return 1;
+        }
+    }
+    return 0;
+}
+
+int main(int argc, char* argv[]) {
+    Config config;
+    if (parse_args(argc, argv, &config) != 0) {
+        return 1;
+    }
+
+    pthread_t threads[config.num_threads];
     pthread_t monitor_thread;
-    ThreadData thread_data[NUM_THREADS];
+    ThreadData thread_data[config.num_threads];
     MonitorData monitor_data = {0};
     volatile int* shared_array;
-    size_t total_size = ARRAY_SIZE * sizeof(int);
+    size_t total_size = config.array_size * sizeof(int);
+    
+    printf("Configuration:\n");
+    printf("  Threads: %d\n", config.num_threads);
+    printf("  Array size: %zu MB\n", config.array_size / (1024 * 1024));
+    printf("  Monitor interval: %d seconds\n", config.monitor_interval);
     
     printf("Attempting to allocate %zu MB of memory...\n", total_size / (1024 * 1024));
     
@@ -132,12 +196,12 @@ int main() {
     }
     
     // Инициализируем массив
-    for(size_t i = 0; i < ARRAY_SIZE; i++) {
+    for(size_t i = 0; i < config.array_size; i++) {
         shared_array[i] = i;
     }
     
     printf("Successfully allocated %zu MB of shared memory\n", total_size / (1024 * 1024));
-    printf("Starting stress test with %d threads...\n", NUM_THREADS);
+    printf("Starting stress test with %d threads...\n", config.num_threads);
     
     // Устанавливаем высокий приоритет
     if (nice(-20) == -1) {
@@ -145,10 +209,10 @@ int main() {
     }
     
     // Создаем потоки
-    for(int i = 0; i < NUM_THREADS; i++) {
+    for(int i = 0; i < config.num_threads; i++) {
         thread_data[i].thread_id = i;
         thread_data[i].array = shared_array;
-        thread_data[i].array_size = ARRAY_SIZE;
+        thread_data[i].array_size = config.array_size;
         
         if(pthread_create(&threads[i], NULL, cpu_stress, &thread_data[i]) != 0) {
             printf("Failed to create thread %d: %s\n", i, strerror(errno));
@@ -167,7 +231,7 @@ int main() {
     printf("All threads started. Press Ctrl+C to stop.\n");
     
     // Ждем завершения потоков
-    for(int i = 0; i < NUM_THREADS; i++) {
+    for(int i = 0; i < config.num_threads; i++) {
         pthread_join(threads[i], NULL);
     }
     
